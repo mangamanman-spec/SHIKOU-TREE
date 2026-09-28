@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f4efff">
+<title>思考ツリー</title>
+<!-- html2canvas & jsPDF for Export -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{--bg:#f7f5fb;--panel:#fff;--ink:#29252f;--muted:#77717f;--accent:#8d6dbd;--line:#b9a9d8;--eee7ff:#eee7ff;--fff7dc:#fff7dc;--danger:#ff7171}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,sans-serif}
+button,input,textarea{font:inherit}button{cursor:pointer}
+header{height:62px;padding:10px 14px;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border-bottom:1px solid #d7cee7;backdrop-filter:blur(10px);position:relative;z-index:10}
+.title-area{display:flex;flex-direction:column;gap:2px;flex:1;overflow:hidden;text-overflow:ellipsis}
+.title{font-weight:700;font-size:17px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.subtitle{font-size:11px;color:var(--muted);font-weight:400}
+.tabs{display:flex;gap:4px;background:#eee8f6;border:1px solid #d7cee7;border-radius:6px;white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{font-size:12px;padding:4px 8px;background:transparent;border:0;border-radius:6px;white-space:nowrap;cursor:pointer}
+.tab.active{background:white;color:var(--accent);font-weight:bold;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.btn{border:1px solid #d7cee7;background:white;border-radius:6px;padding:6px 12px;font-size:13px;color:var(--ink);display:inline-flex;align-items:center;gap:4px;white-space:nowrap;user-select:none;-webkit-touch-callout:none}
+.btn.primary{background:var(--accent);color:white;border-color:transparent}
+.btn.danger{color:var(--danger);border-color:#ffd4d4}
+#viewport{position:absolute;top:62px;bottom:0;left:0;right:0;overflow:hidden;touch-action:none}
+#world{position:absolute;left:0;top:0;width:5000px;height:5000px;pointer-events:none;transform-origin:0 0}
+svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.node{position:absolute;width:180px;background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:10px;box-shadow:0 4px 12px rgba(41,37,47,.08);pointer-events:auto;user-select:none;-webkit-touch-callout:none;display:flex;flex-direction:column;gap:6px;transition:box-shadow .2s}
+.node.root{border-color:var(--accent);background:#fcfaff}
+.node.selected{border-color:var(--danger);box-shadow:0 0 0 3px rgba(255,113,113,.3)}
+.node.link-selecting{border-color:#ff9800;box-shadow:0 0 0 3px rgba(255,152,0,.4)}
+.node-header{display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted)}
+.node-content{width:100%;border:1px solid transparent;background:transparent;resize:none;outline:none;font-size:13px;color:var(--ink);font-family:inherit;line-height:1.4;overflow:hidden}
+.node-content:focus{background:white;border-color:var(--line);border-radius:4px;padding:2px}
+.node-actions{display:flex;gap:4px;justify-content:flex-end;margin-top:2px}
+.node-actions button{background:none;border:none;font-size:11px;color:var(--muted);cursor:pointer;padding:2px 4px;border-radius:4px}
+.node-actions button:hover{background:var(--bg);color:var(--ink)}
+.node-actions button.del:hover{color:var(--danger)}
+#toolbar-float{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(255,255,255,.9);padding:8px 12px;border-radius:30px;box-shadow:0 6px 20px rgba(0,0,0,.12);display:flex;gap:8px;align-items:center;z-index:20;backdrop-filter:blur(10px);border:1px solid #d7cee7}
+#link-banner{position:absolute;top:74px;left:50%;transform:translateX(-50%);background:#ff9800;color:white;padding:6px 16px;border-radius:20px;font-size:13px;font-weight:bold;z-index:25;box-shadow:0 4px 12px rgba(255,152,0,.3);display:none;align-items:center;gap:10px}
+#link-banner button{background:white;color:#ff9800;border:none;border-radius:10px;padding:2px 8px;font-size:11px;font-weight:bold}
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:100;opacity:0;pointer-events:none;transition:opacity .2s}
+.modal-bg.show{opacity:1;pointer-events:auto}
+.modal{background:white;width:90%;max-width:320px;border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.2);display:flex;flex-direction:column;gap:12px}
+.modal h3{margin:0;font-size:16px}
+.modal p{margin:0;font-size:13px;color:var(--muted);line-height:1.4}
+.modal-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="title-area">
+    <div class="title" id="app-title" contenteditable="true">思考ツリー</div>
+    <div class="subtitle">長押しでカスタム線 / ドラッグで移動</div>
+  </div>
+  <div class="tabs" id="tree-tabs"></div>
+  <button class="btn primary" id="btn-new-tree">＋ツリー</button>
+  <button class="btn" id="btn-export">出力</button>
+</header>
+
+<div id="link-banner">
+  <span id="link-banner-text">接続する2つ目のノードを選んでください</span>
+  <button id="btn-cancel-link">キャンセル</button>
+</div>
+
+<div id="viewport">
+  <div id="world">
+    <svg id="svg-canvas"></svg>
+    <div id="nodes-container"></div>
+  </div>
+</div>
+
+<div id="toolbar-float">
+  <button class="btn" id="btn-zoom-in">＋</button>
+  <button class="btn" id="btn-zoom-reset">全体</button>
+  <button class="btn" id="btn-zoom-out">ー</button>
+</div>
+
+<!-- Export Modal -->
+<div class="modal-bg" id="modal-export">
+  <div class="modal">
+    <h3>画像として保存</h3>
+    <p>どの形式で保存しますか？</p>
+    <div class="modal-btns">
+      <button class="btn" id="modal-close">キャンセル</button>
+      <button class="btn primary" id="btn-dl-png">PNG保存</button>
+      <button class="btn primary" id="btn-dl-pdf">PDF保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let state = {
+  trees: JSON.parse(localStorage.getItem('thought_trees_v2')) || [
+    { id: 't1', title: 'メイン思考', nodes: [{ id: 'n1', text: '最初の問い / テーマ', x: 2350, y: 2350, parent: null }], customLinks: [] }
+  ],
+  currentTreeId: 't1',
+  pan: { x: 0, y: 0 },
+  zoom: 1,
+  linkingSourceId: null
+};
+
+function saveState() {
+  localStorage.setItem('thought_trees_v2', JSON.stringify(state.trees));
+}
+
+function getCurrentTree() {
+  return state.trees.find(t => t.id === state.currentTreeId) || state.trees[0];
+}
+
+// DOM
+const world = document.getElementById('world');
+const viewport = document.getElementById('viewport');
+const nodesContainer = document.getElementById('nodes-container');
+const svgCanvas = document.getElementById('svg-canvas');
+const tabsContainer = document.getElementById('tree-tabs');
+const linkBanner = document.getElementById('link-banner');
+
+// Initialize view to center root
+function initView() {
+  const tree = getCurrentTree();
+  const root = tree.nodes.find(n => n.parent === null) || tree.nodes[0];
+  if(root) {
+    state.pan.x = viewport.clientWidth / 2 - (root.x + 90);
+    state.pan.y = viewport.clientHeight / 2 - (root.y + 40);
+  }
+  updateTransform();
+}
+
+function updateTransform() {
+  world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+}
+
+// Render Tabs
+function renderTabs() {
+  tabsContainer.innerHTML = '';
+  state.trees.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = `tab ${t.id === state.currentTreeId ? 'active' : ''}`;
+    btn.textContent = t.title;
+    btn.onclick = () => { state.currentTreeId = t.id; render(); };
+    tabsContainer.appendChild(btn);
+  });
+}
+
+// Main Render
+function render() {
+  renderTabs();
+  const tree = getCurrentTree();
+  document.getElementById('app-title').textContent = tree.title;
+  
+  nodesContainer.innerHTML = '';
+  svgCanvas.innerHTML = '';
+
+  // Draw lines (Parent-Child & Custom Links)
+  tree.nodes.forEach(node => {
+    if(node.parent) {
+      const parent = tree.nodes.find(n => n.id === node.parent);
+      if(parent) drawCurvedLine(parent.x + 90, parent.y + 40, node.x + 90, node.y + 40, '#b9a9d8', 2, false);
+    }
+  });
+
+  if(tree.customLinks) {
+    tree.customLinks.forEach(link => {
+      const n1 = tree.nodes.find(n => n.id === link.from);
+      const n2 = tree.nodes.find(n => n.id === link.to);
+      if(n1 && n2) {
+        drawCurvedLine(n1.x + 90, n1.y + 40, n2.x + 90, n2.y + 40, '#ff9800', 3, true);
+      }
+    });
+  }
+
+  // Draw Nodes
+  tree.nodes.forEach(node => {
+    const el = document.createElement('div');
+    const isLinking = state.linkingSourceId === node.id;
+    el.className = `node ${node.parent === null ? 'root' : ''} ${isLinking ? 'link-selecting' : ''}`;
+    el.style.left = node.x + 'px';
+    el.style.top = node.y + 'px';
+
+    el.innerHTML = `
+      <div class="node-header">
+        <span>#${node.id.slice(-4)}</span>
+        <span>${node.parent === null ? 'ROOT' : ''}</span>
+      </div>
+      <textarea class="node-content" rows="2" placeholder="思考を入力...">${node.text}</textarea>
+      <div class="node-actions">
+        <button title="接続線を引く" class="btn-link-action">🔗線</button>
+        ${node.parent !== null ? '<button class="del">削除</button>' : ''}
+        <button class="add-child">＋子</button>
+      </div>
+    `;
+
+    const textarea = el.querySelector('.node-content');
+    textarea.oninput = (e) => {
+      node.text = e.target.value;
+      autoResize(textarea);
+      saveState();
+    };
+    autoResize(textarea);
+
+    // Add child with smart diagonal/offset positioning
+    el.querySelector('.add-child').onclick = () => {
+      const siblings = tree.nodes.filter(n => n.parent === node.id);
+      const angleStep = Math.PI / 3;
+      const baseAngle = siblings.length * angleStep - Math.PI / 4;
+      const distance = 220;
+      
+      const newX = node.x + Math.cos(baseAngle) * distance;
+      const newY = node.y + Math.sin(baseAngle) * distance + 60;
+
+      const newNode = {
+        id: 'n_' + Math.random().toString(36.2),
+        text: '',
+        x: Math.max(100, Math.min(4800, newX)),
+        y: Math.max(100, Math.min(4800, newY)),
+        parent: node.id
+      };
+      tree.nodes.push(newNode);
+      saveState();
+      render();
+      setTimeout(() => {
+        const addedEl = nodesContainer.lastChild.querySelector('textarea');
+        if(addedEl) addedEl.focus();
+      }, 50);
+    };
+
+    // Delete node
+    const delBtn = el.querySelector('.del');
+    if(delBtn) {
+      delBtn.onclick = () => {
+        const removeRecursive = (id) => {
+          tree.nodes = tree.nodes.filter(n => n.id !== id);
+          tree.nodes.filter(n => n.parent === id).forEach(n => removeRecursive(n.id));
+          tree.customLinks = (tree.customLinks || []).filter(l => l.from !== id && l.to !== id);
+        };
+        removeRecursive(node.id);
+        saveState();
+        render();
+      };
+    }
+
+    // Custom link trigger
+    el.querySelector('.btn-link-action').onclick = (e) => {
+      e.stopPropagation();
+      if(!state.linkingSourceId) {
+        state.linkingSourceId = node.id;
+        linkBanner.style.display = 'flex';
+        document.getElementById('link-banner-text').textContent = `「${node.text || '無題'}」から繋ぐ先を選択中...`;
+        render();
+      } else if(state.linkingSourceId === node.id) {
+        state.linkingSourceId = null;
+        linkBanner.style.display = 'none';
+        render();
+      } else {
+        // Create link
+        if(!tree.customLinks) tree.customLinks = [];
+        // Prevent duplicate or self link
+        const exists = tree.customLinks.some(l => (l.from === state.linkingSourceId && l.to === node.id) || (l.from === node.id && l.to === state.linkingSourceId));
+        if(!exists) {
+          tree.customLinks.push({ from: state.linkingSourceId, to: node.id });
+          saveState();
+        }
+        state.linkingSourceId = null;
+        linkBanner.style.display = 'none';
+        render();
+      }
+    };
+
+    // Long press detection for quick link mode (approx 600ms)
+    let pressTimer = null;
+    el.onpointerdown = (e) => {
+      if(e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
+      pressTimer = setTimeout(() => {
+        if(!state.linkingSourceId) {
+          state.linkingSourceId = node.id;
+          linkBanner.style.display = 'flex';
+          document.getElementById('link-banner-text').textContent = `「${node.text || '無題'}」を選択しました。別のノードをタップして接続`;
+          render();
+        }
+      }, 600);
+    };
+    el.onpointerup = () => clearTimeout(pressTimer);
+    el.onpointerleave = () => clearTimeout(pressTimer);
+
+    // Node Dragging
+    let isDragging = false;
+    let startX, startY;
+    el.onpointerdown = (e) => {
+      if(e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
+      isDragging = true;
+      startX = e.clientX - node.x * state.zoom;
+      startY = e.clientY - node.y * state.zoom;
+      el.setPointerCapture(e.pointerId);
+    };
+    el.onpointermove = (e) => {
+      if(!isDragging) return;
+      node.x = (e.clientX - startX) / state.zoom;
+      node.y = (e.clientY - startY) / state.zoom;
+      el.style.left = node.x + 'px';
+      el.style.top = node.y + 'px';
+      renderLinesOnly();
+    };
+    el.onpointerup = (e) => {
+      if(isDragging) {
+        isDragging = false;
+        saveState();
+      }
+    };
+
+    nodesContainer.appendChild(el);
+  });
+}
+
+function autoResize(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
+}
+
+function drawCurvedLine(x1, y1, x2, y2, color, width, dashed) {
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const dx = Math.abs(x2 - x1) * 0.5;
+  const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+  path.setAttribute('d', d);
+  path.setAttribute('stroke', color);
+  path.setAttribute('stroke-width', width);
+  path.setAttribute('fill', 'none');
+  if(dashed) path.setAttribute('stroke-dasharray', '6,6');
+  svgCanvas.appendChild(path);
+}
+
+function renderLinesOnly() {
+  const tree = getCurrentTree();
+  svgCanvas.innerHTML = '';
+  tree.nodes.forEach(node => {
+    if(node.parent) {
+      const parent = tree.nodes.find(n => n.id === node.parent);
+      if(parent) drawCurvedLine(parent.x + 90, parent.y + 40, node.x + 90, node.y + 40, '#b9a9d8', 2, false);
+    }
+  });
+  if(tree.customLinks) {
+    tree.customLinks.forEach(link => {
+      const n1 = tree.nodes.find(n => n.id === link.from);
+      const n2 = tree.nodes.find(n => n.id === link.to);
+      if(n1 && n2) {
+        drawCurvedLine(n1.x + 90, n1.y + 40, n2.x + 90, n2.y + 40, '#ff9800', 3, true);
+      }
+    });
+  }
+}
+
+// Cancel link mode
+document.getElementById('btn-cancel-link').onclick = () => {
+  state.linkingSourceId = null;
+  linkBanner.style.display = 'none';
+  render();
+};
+
+// Viewport panning & zooming
+let isPan = false;
+let startPanX, startPanY;
+viewport.onpointerdown = (e) => {
+  if(e.target === viewport || e.target === world || e.target === svgCanvas) {
+    isPan = true;
+    startPanX = e.clientX - state.pan.x;
+    startPanY = e.clientY - state.pan.y;
+    viewport.setPointerCapture(e.pointerId);
+  }
+};
+viewport.onpointermove = (e) => {
+  if(!isPan) return;
+  state.pan.x = e.clientX - startPanX;
+  state.pan.y = e.clientY - startPanY;
+  updateTransform();
+};
+viewport.onpointerup = (e) => { isPan = false; };
+
+// Zoom buttons
+document.getElementById('btn-zoom-in').onclick = () => { state.zoom = Math.min(2, state.zoom + 0.15); updateTransform(); };
+document.getElementById('btn-zoom-out').onclick = () => { state.zoom = Math.max(0.3, state.zoom - 0.15); updateTransform(); };
+document.getElementById('btn-zoom-reset').onclick = () => { state.zoom = 1; initView(); };
+
+// Pinch zoom for mobile
+let lastDist = null;
+viewport.onpointermove = (e) => {
+  if(isPan) {
+    state.pan.x = e.clientX - startPanX;
+    state.pan.y = e.clientY - startPanY;
+    updateTransform();
+  }
+};
+
+// New Tree
+document.getElementById('btn-new-tree').onclick = () => {
+  const title = prompt('新しいツリーのタイトル:', '新しい思考');
+  if(!title) return;
+  const newTreeId = 't_' + Math.random().toString(36).slice(2, 7);
+  state.trees.push({
+    id: newTreeId,
+    title: title,
+    nodes: [{ id: 'n_' + Math.random().toString(36).slice(2, 7), text: title, x: 2350, y: 2350, parent: null }],
+    customLinks: []
+  });
+  state.currentTreeId = newTreeId;
+  saveState();
+  initView();
+  render();
+};
+
+document.getElementById('app-title').oninput = (e) => {
+  getCurrentTree().title = e.target.textContent;
+  saveState();
+  renderTabs();
+};
+
+// Export Modal logic
+const modalExport = document.getElementById('modal-export');
+document.getElementById('btn-export').onclick = () => modalExport.classList.add('show');
+document.getElementById('modal-close').onclick = () => modalExport.classList.remove('show');
+
+document.getElementById('btn-dl-png').onclick = () => {
+  modalExport.classList.remove('show');
+  exportCanvas('png');
+};
+document.getElementById('btn-dl-pdf').onclick = () => {
+  modalExport.classList.remove('show');
+  exportCanvas('pdf');
+};
+
+function exportCanvas(type) {
+  const tree = getCurrentTree();
+  if(tree.nodes.length === 0) return;
+  
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  tree.nodes.forEach(n => {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + 180);
+    maxY = Math.max(maxY, n.y + 120);
+  });
+  
+  const padding = 60;
+  minX -= padding; minY -= padding;
+  maxX += padding; maxY += padding;
+  const w = maxX - minX;
+  const h = maxY - minY;
+
+  const cloneWorld = world.cloneNode(true);
+  cloneWorld.style.transform = `translate(${-minX}px, ${-minY}px) scale(1)`;
+  
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '0';
+  container.style.width = w + 'px';
+  container.style.height = h + 'px';
+  container.style.background = '#f7f5fb';
+  container.appendChild(cloneWorld);
+  document.body.appendChild(container);
+
+  html2canvas(cloneWorld, { width: w, height: h, scale: 2 }).then(canvas => {
+    document.body.removeChild(container);
+    if(type === 'png') {
+      const link = document.createElement('a');
+      link.download = `${tree.title}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } else {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: w > h ? 'landscape' : 'portrait', unit: 'px', format: [w, h] });
+      pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, w, h);
+      pdf.save(`${tree.title}.pdf`);
+    }
+  });
+}
+
+// Initial setup
+initView();
+render();
+</script>
+</body>
+</html>
