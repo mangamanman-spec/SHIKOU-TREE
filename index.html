@@ -11,7 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
-:root{--bg:#f7f5fb;--panel:#fff;--ink:#29252f;--muted:#77717f;--accent:#8d6bd1;--line:#b9a9d8;--q:#eee7ff;--a:#fff7dc;--danger:#c94d5b}
+:root{--bg:#f7f5fb;--panel:#fff;--ink:#29252f;--muted:#77717f;--accent:#8d6bd1;--line:#b9a9d8;--q:#eee7ff;--a:#fff7dc;--danger:#c94d5b;--orange:#ff8c00}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;color:var(--ink);background:var(--bg);-webkit-user-select:none;user-select:none}
 button,input,textarea{font:inherit}button{cursor:pointer}
 header{height:62px;padding:10px 14px;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border-bottom:1px solid #ddd6e8;position:relative;z-index:5}
@@ -29,6 +29,7 @@ header{height:62px;padding:10px 14px;display:flex;align-items:center;gap:10px;ba
 #world{position:absolute;left:0;top:0;width:5000px;height:5000px;transform-origin:0 0}
 svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .edge{stroke:var(--line);stroke-width:3;fill:none}
+.edge.link-edge{stroke:var(--orange);stroke-dasharray:6,6;stroke-width:3.5}
 .node{position:absolute;width:220px;min-height:92px;background:var(--panel);border:2px solid #d7cee7;border-radius:16px;padding:12px 13px;box-shadow:0 4px 14px rgba(70,50,100,.09);touch-action:none;-webkit-user-select:none;user-select:none}
 .node.question{background:var(--q);border-color:#cdbce9}
 .node.answer{background:var(--a);border-color:#ead89b}
@@ -36,8 +37,8 @@ svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflo
 .node .kind{font-size:10px;color:var(--muted);margin-bottom:5px}
 .node .text{font-size:15px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .node .text strong{font-weight:700;color:var(--accent)}
-.node .actions{display:flex;gap:5px;margin-top:9px}
-.node .actions button{font-size:11px;padding:5px 7px;border-radius:8px;border:1px solid #ddd;background:#fff}
+.node .actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}
+.node .actions button{font-size:10px;padding:4px 6px;border-radius:6px;border:1px solid #ddd;background:#fff}
 #hint{position:absolute;left:14px;bottom:14px;background:rgba(255,255,255,.92);border:1px solid #ddd6e8;border-radius:12px;padding:9px 11px;font-size:12px;color:var(--muted);z-index:4;box-shadow:0 2px 8px #00000010}
 #modal{display:none;position:fixed;inset:0;background:#0006;z-index:20;align-items:center;justify-content:center;padding:18px;-webkit-user-select:none;user-select:none}
 .dialog{width:min(520px,100%);background:white;border-radius:18px;padding:18px;box-shadow:0 20px 60px #0004;position:relative;transform:translate(0,0)}
@@ -86,7 +87,7 @@ textarea{min-height:110px;resize:vertical}.row{display:flex;gap:8px;justify-cont
 </div>
 <div id="toast"></div>
 <script>
-const STORAGE_KEY="shikou-tree-multi-v5";
+const STORAGE_KEY="shikou-tree-multi-v6";
 let allTrees = loadAll();
 let currentTreeId = allTrees.activeId || allTrees.trees[0].id;
 
@@ -100,10 +101,10 @@ function loadAll(){
  let defaultTree = {
    id: "t_default",
    nodes:[
-    {id:"root",parent:null,type:"question",text:"この企画のウリは何か？",x:1000,y:260},
-    {id:"a",parent:"root",type:"question",text:"他の企画と何が違う？",x:650,y:530},
-    {id:"b",parent:"root",type:"question",text:"見る人に何を感じてほしい？",x:1000,y:530},
-    {id:"c",parent:"root",type:"question",text:"「これがあるから見る」と言えるものは？",x:1350,y:530}
+    {id:"root",parent:null,type:"question",text:"この企画のウリは何か？",x:1000,y:260,links:[]},
+    {id:"a",parent:"root",type:"question",text:"他の企画と何が違う？",x:650,y:530,links:[]},
+    {id:"b",parent:"root",type:"question",text:"見る人に何を感じてほしい？",x:1000,y:530,links:[]},
+    {id:"c",parent:"root",type:"question",text:"「これがあるから見る」と言えるものは？",x:1350,y:530,links:[]}
    ]
  };
  return { activeId: "t_default", trees: [defaultTree] };
@@ -111,7 +112,7 @@ function loadAll(){
 
 function saveAll(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(allTrees)); }
 
-let editing=null, selected=null, zoom=1, pan={x:0,y:0}, type="question";
+let editing=null, selected=null, zoom=1, pan={x:0,y:0}, type="question", linkingFrom=null;
 const world=document.getElementById("world"), nodesEl=document.getElementById("nodes"), edges=document.getElementById("edges"), viewport=document.getElementById("viewport");
 function uid(){return Math.random().toString(36).slice(2)+Date.now().toString(36)}
 function toast(s){let t=document.getElementById("toast");t.textContent=s;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display="none",1500)}
@@ -154,6 +155,7 @@ function renderTabs(){
       allTrees.activeId = currentTreeId;
       saveAll();
       selected = null;
+      linkingFrom = null;
       updateHeaderTitle();
       fitInitial();
       render();
@@ -202,13 +204,38 @@ function render(){
  let tree = getTree();
  nodesEl.innerHTML="";
  tree.nodes.forEach(n=>{
-  let d=document.createElement("div"); d.className="node "+n.type+(selected===n.id?" selected":""); d.dataset.id=n.id;
+  let d=document.createElement("div"); 
+  d.className="node "+n.type+(selected===n.id?" selected":"")+(linkingFrom===n.id?" linking":""); 
+  d.dataset.id=n.id;
   d.style.left=n.x+"px";d.style.top=n.y+"px";
-  d.innerHTML=`<div class="kind">${n.type==="question"?"問い":"答え・アイデア"}</div><div class="text"></div><div class="actions"><button data-act="add">＋枝を追加</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>`;
+  
+  let linkActionText = linkingFrom === n.id ? "キャンセル" : (linkingFrom ? "ここに繋ぐ" : "線を繋ぐ");
+
+  d.innerHTML=`<div class="kind">${n.type==="question"?"問い":"答え・アイデア"}</div><div class="text"></div><div class="actions"><button data-act="add">＋枝</button><button data-act="edit">編集</button><button data-act="link">${linkActionText}</button><button data-act="del">削除</button></div>`;
   d.querySelector(".text").innerHTML = parseMarkdown(n.text);
   
   d.querySelector('[data-act="add"]').onclick=()=>openEditor(null,n.id);
   d.querySelector('[data-act="edit"]').onclick=()=>openEditor(n.id);
+  
+  d.querySelector('[data-act="link"]').onclick=() => {
+    if(!linkingFrom) {
+      linkingFrom = n.id;
+      toast("繋ぎ先のノードを選んでください");
+      render();
+    } else if(linkingFrom === n.id) {
+      linkingFrom = null;
+      toast("接続をキャンセルしました");
+      render();
+    } else {
+      if(!n.links) n.links = [];
+      if(!n.links.includes(linkingFrom)) n.links.push(linkingFrom);
+      saveAll();
+      toast("オレンジの線で繋ぎました！");
+      linkingFrom = null;
+      render();
+    }
+  };
+
   d.querySelector('[data-act="del"]').onclick=()=>delNode(n.id);
   nodesEl.appendChild(d);
  });
@@ -250,6 +277,8 @@ window.addEventListener("pointerup", () => {
 function drawEdges(){
  edges.innerHTML="";
  let tree = getTree();
+ 
+ // 通常の親子線を描画
  tree.nodes.forEach(n=>{
   if(!n.parent)return;
   let p=tree.nodes.find(x=>x.id===n.parent);if(!p)return;
@@ -257,7 +286,23 @@ function drawEdges(){
   let mid=(y1+y2)/2;
   let path=document.createElementNS("http://www.w3.org/2000/svg","path");
   path.setAttribute("d",`M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`);
-  path.setAttribute("class","edge");edges.appendChild(path);
+  path.setAttribute("class","edge");
+  edges.appendChild(path);
+ });
+
+ // 追加のオレンジの点線（リンク）を描画
+ tree.nodes.forEach(n=>{
+  if(!n.links) return;
+  n.links.forEach(targetId => {
+    let target = tree.nodes.find(x => x.id === targetId);
+    if(!target) return;
+    let x1 = n.x + 110, y1 = n.y + 46;
+    let x2 = target.x + 110, y2 = target.y + 46;
+    let path=document.createElementNS("http://www.w3.org/2000/svg","path");
+    path.setAttribute("d", `M ${x1} ${y1} Q ${(x1+x2)/2} ${Math.min(y1,y2)-50} ${x2} ${y2}`);
+    path.setAttribute("class", "edge link-edge");
+    edges.appendChild(path);
+  });
  });
 }
 
@@ -405,7 +450,7 @@ function saveNodeFromModal() {
     let newId = "t_" + uid();
     let newTree = {
       id: newId,
-      nodes: [{id: uid(), parent: null, type: "question", text: text, x: 1000, y: 260}]
+      nodes: [{id: uid(), parent: null, type: "question", text: text, x: 1000, y: 260, links:[]}]
     };
     allTrees.trees.push(newTree);
     currentTreeId = newId;
@@ -414,9 +459,22 @@ function saveNodeFromModal() {
   } else {
     let p = tree.nodes.find(n=>n.id===parentId);
     let kids = tree.nodes.filter(n=>n.parent===parentId);
-    let offset = (kids.length-1)*130;
+    
+    // 【自動レイアウト改善】ノード同士が横に被らないよう、左右に余裕を持たせた配置計算
+    let spacing = 260;
+    let startX = p.x - ((kids.length - 1) * spacing) / 2;
+    let newX = startX + (kids.length * spacing);
+    
     let newId = uid();
-    tree.nodes.push({id: newId, parent: parentId, type, text, x: p.x + offset, y: p.y + 190 + Math.min(kids.length,4)*15});
+    tree.nodes.push({
+      id: newId, 
+      parent: parentId, 
+      type, 
+      text, 
+      x: newX, 
+      y: p.y + 190, 
+      links: []
+    });
   }
   saveAll(); closeEditor(); render(); toast("保存しました");
 }
@@ -465,7 +523,7 @@ function delNode(id){
    if(!confirm("大元のノードを削除するとツリー自体が削除されます。よろしいですか？")) return;
    allTrees.trees = allTrees.trees.filter(t => t.id !== currentTreeId);
    if(allTrees.trees.length === 0){
-     allTrees.trees.push({id: "t_default", nodes: [{id:"root", parent:null, type:"question", text:"新しい問い", x:1000, y:260}]});
+     allTrees.trees.push({id: "t_default", nodes: [{id:"root", parent:null, type:"question", text:"新しい問い", x:1000, y:260, links:[]}]});
    }
    currentTreeId = allTrees.trees[0].id;
    allTrees.activeId = currentTreeId;
@@ -476,7 +534,14 @@ function delNode(id){
  if(!confirm("このノードと、その下の枝を削除しますか？")) return;
  let ids = new Set([id]), changed = true;
  while(changed){ changed = false; tree.nodes.forEach(n=>{ if(ids.has(n.parent) && !ids.has(n.id)){ ids.add(n.id); changed = true; } }); }
- tree.nodes = tree.nodes.filter(n=>!ids.has(n.id)); selected = null; saveAll(); render();
+ tree.nodes = tree.nodes.filter(n=>!ids.has(n.id)); 
+ 
+ // 他のノードからのリンク先からも削除
+ tree.nodes.forEach(n => {
+   if(n.links) n.links = n.links.filter(lid => !ids.has(lid));
+ });
+
+ selected = null; saveAll(); render();
 }
 
 // 確実に出力するためのクローン＆絶対座標レンダリング方式
@@ -538,21 +603,38 @@ function executeExport(choice) {
   let cloneSvg = edges.cloneNode(true);
   cloneSvg.style.cssText = `position:absolute; left:0; top:0; width:${exportWidth}px; height:${exportHeight}px; overflow:visible;`;
   
+  // エクスポート時のSVG線の座標補正
   let paths = cloneSvg.querySelectorAll("path");
   let pathIndex = 0;
   tree.nodes.forEach(n => {
-    if(!n.parent) return;
-    let p = tree.nodes.find(x => x.id === n.parent);
-    if(!p) return;
-    let x1 = (p.x + 110) - minX;
-    let y1 = (p.y + 92) - minY;
-    let x2 = (n.x + 110) - minX;
-    let y2 = n.y - minY;
-    let mid = (y1 + y2) / 2;
-    if(paths[pathIndex]) {
-      paths[pathIndex].setAttribute("d", `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`);
+    if(n.parent) {
+      let p = tree.nodes.find(x => x.id === n.parent);
+      if(p && paths[pathIndex]) {
+        let x1 = (p.x + 110) - minX;
+        let y1 = (p.y + 92) - minY;
+        let x2 = (n.x + 110) - minX;
+        let y2 = n.y - minY;
+        let mid = (y1 + y2) / 2;
+        paths[pathIndex].setAttribute("d", `M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}`);
+      }
+      pathIndex++;
     }
-    pathIndex++;
+  });
+
+  tree.nodes.forEach(n => {
+    if(n.links) {
+      n.links.forEach(targetId => {
+        let target = tree.nodes.find(x => x.id === targetId);
+        if(target && paths[pathIndex]) {
+          let x1 = (n.x + 110) - minX;
+          let y1 = (n.y + 46) - minY;
+          let x2 = (target.x + 110) - minX;
+          let y2 = (target.y + 46) - minY;
+          paths[pathIndex].setAttribute("d", `M ${x1} ${y1} Q ${(x1+x2)/2} ${Math.min(y1,y2)-50} ${x2} ${y2}`);
+        }
+        pathIndex++;
+      });
+    }
   });
 
   wrapper.appendChild(cloneSvg);
