@@ -34,6 +34,8 @@ svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflo
 .node.question{background:var(--q);border-color:#cdbce9}
 .node.answer{background:var(--a);border-color:#ead89b}
 .node.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(141,107,209,.18)}
+.node.linking{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,140,0,.3);animation:pulse 1s infinite}
+@keyframes pulse{0%{opacity:1}50%{opacity:.6}100%{opacity:1}}
 .node .kind{font-size:10px;color:var(--muted);margin-bottom:5px}
 .node .text{font-size:15px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
 .node .text strong{font-weight:700;color:var(--accent)}
@@ -66,7 +68,7 @@ textarea{min-height:110px;resize:vertical}.row{display:flex;gap:8px;justify-cont
 </header>
 <div id="viewport">
   <div id="world"><svg id="edges"></svg><div id="nodes"></div></div>
-  <div id="hint">ドラッグ：画面移動　／　ピンチ：拡大縮小・移動</div>
+  <div id="hint">長押し：オレンジ線繋ぎ　／　ドラッグ：移動</div>
 </div>
 <div id="modal">
  <div class="dialog" id="dialogBox">
@@ -87,7 +89,7 @@ textarea{min-height:110px;resize:vertical}.row{display:flex;gap:8px;justify-cont
 </div>
 <div id="toast"></div>
 <script>
-const STORAGE_KEY="shikou-tree-multi-v6";
+const STORAGE_KEY="shikou-tree-multi-v7";
 let allTrees = loadAll();
 let currentTreeId = allTrees.activeId || allTrees.trees[0].id;
 
@@ -209,40 +211,21 @@ function render(){
   d.dataset.id=n.id;
   d.style.left=n.x+"px";d.style.top=n.y+"px";
   
-  let linkActionText = linkingFrom === n.id ? "キャンセル" : (linkingFrom ? "ここに繋ぐ" : "線を繋ぐ");
-
-  d.innerHTML=`<div class="kind">${n.type==="question"?"問い":"答え・アイデア"}</div><div class="text"></div><div class="actions"><button data-act="add">＋枝</button><button data-act="edit">編集</button><button data-act="link">${linkActionText}</button><button data-act="del">削除</button></div>`;
+  d.innerHTML=`<div class="kind">${n.type==="question"?"問い":"答え・アイデア"}</div><div class="text"></div><div class="actions"><button data-act="add">＋枝</button><button data-act="edit">編集</button><button data-act="del">削除</button></div>`;
   d.querySelector(".text").innerHTML = parseMarkdown(n.text);
   
   d.querySelector('[data-act="add"]').onclick=()=>openEditor(null,n.id);
   d.querySelector('[data-act="edit"]').onclick=()=>openEditor(n.id);
-  
-  d.querySelector('[data-act="link"]').onclick=() => {
-    if(!linkingFrom) {
-      linkingFrom = n.id;
-      toast("繋ぎ先のノードを選んでください");
-      render();
-    } else if(linkingFrom === n.id) {
-      linkingFrom = null;
-      toast("接続をキャンセルしました");
-      render();
-    } else {
-      if(!n.links) n.links = [];
-      if(!n.links.includes(linkingFrom)) n.links.push(linkingFrom);
-      saveAll();
-      toast("オレンジの線で繋ぎました！");
-      linkingFrom = null;
-      render();
-    }
-  };
-
   d.querySelector('[data-act="del"]').onclick=()=>delNode(n.id);
+  
   nodesEl.appendChild(d);
  });
  drawEdges();
 }
 
 let activeNodeDrag = null;
+let nodePressTimer = null;
+
 window.addEventListener("pointerdown", e => {
   let nodeEl = e.target.closest(".node");
   if(nodeEl && !e.target.closest("button")) {
@@ -252,24 +235,70 @@ window.addEventListener("pointerdown", e => {
     if(n) {
       selected = id; render();
       activeNodeDrag = {id, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y, moved: false};
+      
+      // 【長押し判定】ノードを約600ms長押しするとオレンジ線つなぎを開始・解除
+      nodePressTimer = setTimeout(() => {
+        if(activeNodeDrag && !activeNodeDrag.moved) {
+          handleNodeLongPress(id);
+        }
+      }, 600);
+
       e.preventDefault();
     }
   }
 });
+
+function handleNodeLongPress(id) {
+  activeNodeDrag = null; // ドラッグキャンセル
+  let tree = getTree();
+  if(!linkingFrom) {
+    linkingFrom = id;
+    toast("つなぎ先のノードを長押ししてください");
+    render();
+  } else if(linkingFrom === id) {
+    linkingFrom = null;
+    toast("接続モードを解除しました");
+    render();
+  } else {
+    let sourceNode = tree.nodes.find(x => x.id === linkingFrom);
+    if(sourceNode) {
+      if(!sourceNode.links) sourceNode.links = [];
+      let idx = sourceNode.links.indexOf(id);
+      if(idx > -1) {
+        // 既に繋がっていれば解除
+        sourceNode.links.splice(idx, 1);
+        toast("オレンジの線を外しました");
+      } else {
+        // 繋がっていなければ追加
+        sourceNode.links.push(id);
+        toast("オレンジの線で繋ぎました！");
+      }
+      saveAll();
+    }
+    linkingFrom = null;
+    render();
+  }
+}
+
 window.addEventListener("pointermove", e => {
   if(!activeNodeDrag) return;
   let dx = (e.clientX - activeNodeDrag.startX) / zoom;
   let dy = (e.clientY - activeNodeDrag.startY) / zoom;
-  if(Math.abs(dx) + Math.abs(dy) > 3) activeNodeDrag.moved = true;
+  if(Math.abs(dx) + Math.abs(dy) > 3) {
+    activeNodeDrag.moved = true;
+    if(nodePressTimer) clearTimeout(nodePressTimer); // 動かしたら長押しタイマー解除
+  }
   let tree = getTree();
   let n = tree.nodes.find(x => x.id === activeNodeDrag.id);
-  if(n) {
+  if(n && activeNodeDrag.moved) {
     n.x = activeNodeDrag.origX + dx;
     n.y = activeNodeDrag.origY + dy;
     render();
   }
 });
+
 window.addEventListener("pointerup", () => {
+  if(nodePressTimer) clearTimeout(nodePressTimer);
   if(activeNodeDrag?.moved) { saveAll(); toast("位置を保存しました"); }
   activeNodeDrag = null;
 });
@@ -459,8 +488,6 @@ function saveNodeFromModal() {
   } else {
     let p = tree.nodes.find(n=>n.id===parentId);
     let kids = tree.nodes.filter(n=>n.parent===parentId);
-    
-    // 【自動レイアウト改善】ノード同士が横に被らないよう、左右に余裕を持たせた配置計算
     let spacing = 260;
     let startX = p.x - ((kids.length - 1) * spacing) / 2;
     let newX = startX + (kids.length * spacing);
@@ -536,7 +563,6 @@ function delNode(id){
  while(changed){ changed = false; tree.nodes.forEach(n=>{ if(ids.has(n.parent) && !ids.has(n.id)){ ids.add(n.id); changed = true; } }); }
  tree.nodes = tree.nodes.filter(n=>!ids.has(n.id)); 
  
- // 他のノードからのリンク先からも削除
  tree.nodes.forEach(n => {
    if(n.links) n.links = n.links.filter(lid => !ids.has(lid));
  });
@@ -544,7 +570,6 @@ function delNode(id){
  selected = null; saveAll(); render();
 }
 
-// 確実に出力するためのクローン＆絶対座標レンダリング方式
 document.getElementById("exportBtn").onclick = () => {
   let oldExportModal = document.getElementById("exportModal");
   if(oldExportModal) oldExportModal.remove();
@@ -603,7 +628,6 @@ function executeExport(choice) {
   let cloneSvg = edges.cloneNode(true);
   cloneSvg.style.cssText = `position:absolute; left:0; top:0; width:${exportWidth}px; height:${exportHeight}px; overflow:visible;`;
   
-  // エクスポート時のSVG線の座標補正
   let paths = cloneSvg.querySelectorAll("path");
   let pathIndex = 0;
   tree.nodes.forEach(n => {
@@ -639,6 +663,7 @@ function executeExport(choice) {
 
   wrapper.appendChild(cloneSvg);
 
+  tree.nodes.fields?.forEach?.();
   tree.nodes.forEach(n => {
     let originalNodeEl = nodesEl.querySelector(`[data-id="${n.id}"]`);
     if(originalNodeEl) {
