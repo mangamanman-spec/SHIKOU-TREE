@@ -93,7 +93,7 @@ textarea{min-height:110px;resize:vertical}.row{display:flex;gap:8px;justify-cont
 </div>
 <div id="toast"></div>
 <script>
-const STORAGE_KEY="shikou-tree-multi-v8";
+const STORAGE_KEY="shikou-tree-multi-v9";
 let allTrees = loadAll();
 let currentTreeId = allTrees.activeId || allTrees.trees[0].id;
 
@@ -237,7 +237,6 @@ window.addEventListener("pointerdown", e => {
     let tree = getTree();
     let n = tree.nodes.find(x => x.id === id);
     if(n) {
-      // 【接続モード中の場合】つなぎ先のノードを「通常タップ」したとみなす
       if(linkingFrom) {
         if(nodePressTimer) clearTimeout(nodePressTimer);
         handleNodeTapForLinking(id);
@@ -248,7 +247,6 @@ window.addEventListener("pointerdown", e => {
       selected = id; render();
       activeNodeDrag = {id, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y, moved: false};
       
-      // 【長押し判定】最初のノードを長押しすると接続モード開始
       nodePressTimer = setTimeout(() => {
         if(activeNodeDrag && !activeNodeDrag.moved) {
           startLinking(id);
@@ -496,11 +494,47 @@ function saveNodeFromModal() {
     allTrees.activeId = currentTreeId;
     fitInitial();
   } else {
+    // 追加対象の親ノード
     let p = tree.nodes.find(n=>n.id===parentId);
-    let kids = tree.nodes.filter(n=>n.parent===parentId);
-    let spacing = 260;
-    let startX = p.x - ((kids.length - 1) * spacing) / 2;
-    let newX = startX + (kids.length * spacing);
+    
+    // ツリーが上に向かっているか下に向かっているかを自動判定
+    let yDir = 190;
+    if(p.parent) {
+      let pp = tree.nodes.find(n=>n.id===p.parent);
+      if(pp && p.y < pp.y) {
+        yDir = -190; // 親が下にある（上に向かって伸ばしている）場合
+      }
+    }
+    
+    let newX = p.x;
+    let newY = p.y + yDir;
+    
+    // 指定した座標に他のノードが被っているかチェックする関数
+    const isOverlap = (x, y) => {
+      return tree.nodes.some(n => Math.abs(n.x - x) < 230 && Math.abs(n.y - y) < 120);
+    };
+    
+    let step = 0;
+    // 被りがある場合、空いている場所が見つかるまで探す
+    while(isOverlap(newX, newY) && step < 50) {
+      step++;
+      // スマホで横幅が見切れないように、まずは縦（進行方向）にずらして探す
+      let testY = p.y + yDir + (yDir > 0 ? 1 : -1) * step * 130;
+      if(!isOverlap(p.x, testY)) {
+        newX = p.x;
+        newY = testY;
+        break;
+      }
+      
+      // 縦が詰まっていたら少しだけ横に逃がして探す
+      let testX = p.x + (step % 2 === 1 ? 1 : -1) * Math.ceil(step / 2) * 250;
+      let testY2 = p.y + yDir;
+      if(!isOverlap(testX, testY2)) {
+        newX = testX;
+        newY = testY2;
+        break;
+      }
+    }
     
     let newId = uid();
     tree.nodes.push({
@@ -509,7 +543,7 @@ function saveNodeFromModal() {
       type, 
       text, 
       x: newX, 
-      y: p.y + 190, 
+      y: newY, 
       links: []
     });
   }
