@@ -14,18 +14,20 @@
 :root{--bg:#f7f5fb;--panel:#fff;--ink:#29252f;--muted:#77717f;--accent:#8d6bd1;--line:#b9a9d8;--q:#eee7ff;--a:#fff7dc;--danger:#c94d5b;--orange:#ff8c00}
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;color:var(--ink);background:var(--bg);-webkit-user-select:none;user-select:none}
 button,input,textarea{font:inherit}button{cursor:pointer}
-header{height:62px;padding:10px 14px;display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.92);border-bottom:1px solid #ddd6e8;position:relative;z-index:5}
-.title-area{display:flex;align-items:center;gap:8px;flex:1;overflow:hidden}
-.title{font-weight:700;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.subtitle{font-size:11px;color:var(--muted);font-weight:400}
-.tabs{display:flex;gap:4px;overflow-x:auto;max-width:30vw;scrollbar-width:none}
+header{padding:8px 12px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:rgba(255,255,255,.95);border-bottom:1px solid #ddd6e8;position:relative;z-index:5}
+.title-area{display:flex;align-items:center;gap:6px;flex:1;min-width:140px;overflow:hidden}
+.title{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.subtitle{font-size:10px;color:var(--muted);font-weight:400;display:none}
+@media(min-width:500px){.subtitle{display:block}}
+.tabs{display:flex;gap:4px;overflow-x:auto;max-width:35vw;scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
-.tab{font-size:12px;padding:4px 8px;background:#eee8f6;border:1px solid #d7cee7;border-radius:6px;white-space:nowrap;cursor:pointer;color:var(--muted)}
+.tab{font-size:11px;padding:3px 6px;background:#eee8f6;border:1px solid #d7cee7;border-radius:6px;white-space:nowrap;cursor:pointer;color:var(--muted)}
 .tab.active{background:white;color:var(--accent);font-weight:bold;border-color:var(--accent)}
-.btn{border:1px solid #d7cee7;background:white;border-radius:10px;padding:8px 11px;color:var(--ink);white-space:nowrap}
+.header-actions{display:flex;gap:6px;align-items:center}
+.btn{border:1px solid #d7cee7;background:white;border-radius:8px;padding:6px 10px;font-size:12px;color:var(--ink);white-space:nowrap}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:white}
 .btn.danger{color:var(--danger)}
-#viewport{position:absolute;top:62px;bottom:0;left:0;right:0;overflow:hidden;touch-action:none}
+#viewport{position:absolute;top:52px;bottom:0;left:0;right:0;overflow:hidden;touch-action:none}
 #world{position:absolute;left:0;top:0;width:5000px;height:5000px;transform-origin:0 0}
 svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
 .edge{stroke:var(--line);stroke-width:3;fill:none}
@@ -34,7 +36,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflo
 .node.question{background:var(--q);border-color:#cdbce9}
 .node.answer{background:var(--a);border-color:#ead89b}
 .node.selected{border-color:var(--accent);box-shadow:0 0 0 3px rgba(141,107,209,.18)}
-.node.linking{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,140,0,.3);animation:pulse 1s infinite}
+.node.linking{border-color:var(--orange);box-shadow:0 0 0 3px rgba(255,140,0,.35);animation:pulse 1s infinite}
 @keyframes pulse{0%{opacity:1}50%{opacity:.6}100%{opacity:1}}
 .node .kind{font-size:10px;color:var(--muted);margin-bottom:5px}
 .node .text{font-size:15px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -62,13 +64,15 @@ textarea{min-height:110px;resize:vertical}.row{display:flex;gap:8px;justify-cont
     <div class="subtitle">思考ツリー</div>
     <div class="tabs" id="tabsContainer"></div>
   </div>
-  <button class="btn" id="exportBtn">出力 ▼</button>
-  <button class="btn" id="reset">最初から</button>
-  <button class="btn primary" id="addRoot">＋ 新規</button>
+  <div class="header-actions">
+    <button class="btn" id="exportBtn">出力 ▼</button>
+    <button class="btn" id="reset">最初から</button>
+    <button class="btn primary" id="addRoot">＋ 新規</button>
+  </div>
 </header>
 <div id="viewport">
   <div id="world"><svg id="edges"></svg><div id="nodes"></div></div>
-  <div id="hint">長押し：オレンジ線繋ぎ　／　ドラッグ：移動</div>
+  <div id="hint">長押し：線つなぎ開始　／　ドラッグ：移動</div>
 </div>
 <div id="modal">
  <div class="dialog" id="dialogBox">
@@ -89,7 +93,7 @@ textarea{min-height:110px;resize:vertical}.row{display:flex;gap:8px;justify-cont
 </div>
 <div id="toast"></div>
 <script>
-const STORAGE_KEY="shikou-tree-multi-v7";
+const STORAGE_KEY="shikou-tree-multi-v8";
 let allTrees = loadAll();
 let currentTreeId = allTrees.activeId || allTrees.trees[0].id;
 
@@ -233,13 +237,21 @@ window.addEventListener("pointerdown", e => {
     let tree = getTree();
     let n = tree.nodes.find(x => x.id === id);
     if(n) {
+      // 【接続モード中の場合】つなぎ先のノードを「通常タップ」したとみなす
+      if(linkingFrom) {
+        if(nodePressTimer) clearTimeout(nodePressTimer);
+        handleNodeTapForLinking(id);
+        e.preventDefault();
+        return;
+      }
+
       selected = id; render();
       activeNodeDrag = {id, startX: e.clientX, startY: e.clientY, origX: n.x, origY: n.y, moved: false};
       
-      // 【長押し判定】ノードを約600ms長押しするとオレンジ線つなぎを開始・解除
+      // 【長押し判定】最初のノードを長押しすると接続モード開始
       nodePressTimer = setTimeout(() => {
         if(activeNodeDrag && !activeNodeDrag.moved) {
-          handleNodeLongPress(id);
+          startLinking(id);
         }
       }, 600);
 
@@ -248,14 +260,16 @@ window.addEventListener("pointerdown", e => {
   }
 });
 
-function handleNodeLongPress(id) {
-  activeNodeDrag = null; // ドラッグキャンセル
+function startLinking(id) {
+  activeNodeDrag = null;
+  linkingFrom = id;
+  toast("つなぎ先のノードをタップしてください");
+  render();
+}
+
+function handleNodeTapForLinking(id) {
   let tree = getTree();
-  if(!linkingFrom) {
-    linkingFrom = id;
-    toast("つなぎ先のノードを長押ししてください");
-    render();
-  } else if(linkingFrom === id) {
+  if(linkingFrom === id) {
     linkingFrom = null;
     toast("接続モードを解除しました");
     render();
@@ -265,11 +279,9 @@ function handleNodeLongPress(id) {
       if(!sourceNode.links) sourceNode.links = [];
       let idx = sourceNode.links.indexOf(id);
       if(idx > -1) {
-        // 既に繋がっていれば解除
         sourceNode.links.splice(idx, 1);
         toast("オレンジの線を外しました");
       } else {
-        // 繋がっていなければ追加
         sourceNode.links.push(id);
         toast("オレンジの線で繋ぎました！");
       }
@@ -286,7 +298,7 @@ window.addEventListener("pointermove", e => {
   let dy = (e.clientY - activeNodeDrag.startY) / zoom;
   if(Math.abs(dx) + Math.abs(dy) > 3) {
     activeNodeDrag.moved = true;
-    if(nodePressTimer) clearTimeout(nodePressTimer); // 動かしたら長押しタイマー解除
+    if(nodePressTimer) clearTimeout(nodePressTimer);
   }
   let tree = getTree();
   let n = tree.nodes.find(x => x.id === activeNodeDrag.id);
@@ -307,7 +319,6 @@ function drawEdges(){
  edges.innerHTML="";
  let tree = getTree();
  
- // 通常の親子線を描画
  tree.nodes.forEach(n=>{
   if(!n.parent)return;
   let p=tree.nodes.find(x=>x.id===n.parent);if(!p)return;
@@ -319,7 +330,6 @@ function drawEdges(){
   edges.appendChild(path);
  });
 
- // 追加のオレンジの点線（リンク）を描画
  tree.nodes.forEach(n=>{
   if(!n.links) return;
   n.links.forEach(targetId => {
@@ -663,7 +673,6 @@ function executeExport(choice) {
 
   wrapper.appendChild(cloneSvg);
 
-  tree.nodes.fields?.forEach?.();
   tree.nodes.forEach(n => {
     let originalNodeEl = nodesEl.querySelector(`[data-id="${n.id}"]`);
     if(originalNodeEl) {
